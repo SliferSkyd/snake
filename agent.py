@@ -5,6 +5,7 @@ from collections import deque
 from snake import SnakeGame as Game
 from snake import Direction, Point, BLOCK_SIZE, SPEED
 from helper import plot
+import os
 
 MAX_MEMORY = 100_000
 BATCH_SIZE = 1000
@@ -13,13 +14,23 @@ LR = 0.001
 class Agent:
     def __init__(self): 
         self.n_games = 0
-        self.epsilon = 0
+        self.epsilon = 1
         self.gamma = 0.9
         self.replay_memory = deque(maxlen=MAX_MEMORY)
+        
+        self.model = tf.keras.models.Sequential()
+        self.target_model = tf.keras.models.Sequential()
+
         self.model = self.create_model()
         self.target_model = self.create_model()
+
+        if os.path.isfile('snake_model.h5'):
+            self.model.load_weights('snake_model.h5')
+            self.target_model.load_weights('snake_model.h5')
+            print('Loaded model from file')
+            
         self.target_update_counter = 0
-        
+
     def create_model(self):
         model = tf.keras.models.Sequential()
         model.add(tf.keras.layers.Dense(24, input_shape=(11,), activation='relu'))
@@ -122,12 +133,14 @@ class Agent:
         target_f[0][action] = target
 
         self.model.fit(np.array([state]), target_f, epochs=1, verbose=0)
+        
+        if self.epsilon > 0.01:
+            self.epsilon *= 0.999
 
     def get_action(self, state):
-        self.epsilon = 80 - self.n_games
         final_move = [0, 0, 0]
 
-        if random.randint(0, 200) < self.epsilon:
+        if random.random() < self.epsilon:
             move = random.randint(0, 2)
             final_move[move] = 1
             print("random")
@@ -170,7 +183,7 @@ def train():
 
             if score > record:
                 record = score
-                agent.model.save()
+                agent.model.save('snake_model.h5')
 
             print('Game', agent.n_games, 'Score', score, 'Record:', record)
 
