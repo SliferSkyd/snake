@@ -1,175 +1,151 @@
-import random
 import pygame
 import random
+from enum import Enum
+from collections import namedtuple
+import numpy as np
 
-class Game:
-    cube_size = 25
-    num_cube = 20
-    board_size = cube_size * num_cube
+pygame.init()
+font = pygame.font.Font('arial.ttf', 25)
 
-    def __init__(self):
-        self.win = pygame.display.set_mode((self.board_size, self.board_size))
-        self.s = self.Snake((255,0,0), (10,10))
-        snack = self.Cube(self.randomSnack(self.num_cube,self.s), color=(0,255,0))
-        flag = True
-        clock = pygame.time.Clock()
+class Direction(Enum):
+    RIGHT = 1
+    LEFT = 2
+    UP = 3
+    DOWN = 4
+
+Point = namedtuple('Point', 'x, y')
+
+# rgb colors
+WHITE = (255, 255, 255)
+RED = (200,0,0)
+BLUE1 = (0, 0, 255)
+BLUE2 = (0, 100, 255)
+BLACK = (0,0,0)
+
+BLOCK_SIZE = 20
+SPEED = 400
+
+class SnakeGame:
+    def __init__(self, w=640, h=480):
+        self.w = w
+        self.h = h
+        # init display
+        self.display = pygame.display.set_mode((self.w, self.h))
+        pygame.display.set_caption('Snake')
+        self.clock = pygame.time.Clock()
+        self.reset()
+
+    def reset(self):
+        # init game state
+        self.direction = Direction.RIGHT
+
+        self.head = Point(self.w/2, self.h/2)
+        self.snake = [self.head,
+                      Point(self.head.x-BLOCK_SIZE, self.head.y),
+                      Point(self.head.x-(2*BLOCK_SIZE), self.head.y)]
+
+        self.score = 0
+        self.food = None
+        self._place_food()
+        self.frame_iteration = 0
+
+
+    def _place_food(self):
+        x = random.randint(0, (self.w-BLOCK_SIZE )//BLOCK_SIZE )*BLOCK_SIZE
+        y = random.randint(0, (self.h-BLOCK_SIZE )//BLOCK_SIZE )*BLOCK_SIZE
+        self.food = Point(x, y)
+        if self.food in self.snake:
+            self._place_food()
+
+
+    def play_step(self, action):
+        self.frame_iteration += 1
+        # 1. collect user input
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
         
-        while flag:
-            pygame.time.delay(50)
-            clock.tick(10)
-            self.s.move()
-            headPos = self.s.head.pos
-            if headPos[0] >= 20 or headPos[0] < 0 or headPos[1] >= 20 or headPos[1] < 0:
-                print("Score:", len(self.s.body))
-                self.s.reset((10, 10))
-
-            if self.s.body[0].pos == snack.pos:
-                self.s.addCube()
-                snack = self.Cube(self.randomSnack(self.num_cube,self.s), color=(0,255,0))
-                
-            for x in range(len(self.s.body)):
-                if self.s.body[x].pos in list(map(lambda z:z.pos,self.s.body[x+1:])):
-                    print("Score:", len(self.s.body))
-                    self.s.reset((10,10))
-                    break       
-            self.redrawWindow()
-
-
-    class Cube:
-        def __init__(self, start, dirnx=1, dirny=0, color=(255,0,0)):
-            self.pos = start
-            self.dirnx = dirnx
-            self.dirny = dirny # "L", "R", "U", "D"
-            self.color = color
-
-        def move(self, dirnx, dirny):
-            self.dirnx = dirnx
-            self.dirny = dirny
-            self.pos = (self.pos[0] + self.dirnx, self.pos[1] + self.dirny)
-                
-        def draw(self, surface, eyes=False):
-            dis = game.cube_size
-            i = self.pos[0]
-            j = self.pos[1]
-            pygame.draw.rect(surface, self.color, (i*dis+1,j*dis+1,dis-2,dis-2))
-            if eyes:
-                centre = dis//2
-                radius = 3
-                circleMiddle = (i*dis+centre-radius,j*dis+8)
-                circleMiddle2 = (i*dis + dis -radius*2, j*dis+8)
-                pygame.draw.circle(surface, (0,0,0), circleMiddle, radius)
-                pygame.draw.circle(surface, (0,0,0), circleMiddle2, radius)
-
-    class Snake():
-        body = []
-        turns = {}
+        # 2. move
+        self._move(action) # update the head
+        self.snake.insert(0, self.head)
         
-        def __init__(self, color, pos):
-            #pos is given as coordinates on the grid ex (1,5)
-            self.color = color
-            self.head = Game.Cube(pos)
-            self.body.append(self.head)
-            self.dirnx = 0
-            self.dirny = 1
+        # 3. check if game over
+        reward = 0
+        game_over = False
+        if self.is_collision() or self.frame_iteration > 100*len(self.snake):
+            game_over = True
+            reward = -10
+            return reward, game_over, self.score
+
+        # 4. place new food or just move
+        if self.head == self.food:
+            self.score += 1
+            reward = 10
+            self._place_food()
+        else:
+            self.snake.pop()
         
-        def move(self):
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                keys = pygame.key.get_pressed()
-
-                for key in keys:
-                    if keys[pygame.K_LEFT]:
-                        self.dirnx = -1
-                        self.dirny = 0
-                        self.turns[self.head.pos[:]] = [self.dirnx,self.dirny]
-                    elif keys[pygame.K_RIGHT]:
-                        self.dirnx = 1
-                        self.dirny = 0
-                        self.turns[self.head.pos[:]] = [self.dirnx,self.dirny]
-                    elif keys[pygame.K_UP]:
-                        self.dirny = -1
-                        self.dirnx = 0
-                        self.turns[self.head.pos[:]] = [self.dirnx,self.dirny]
-                    elif keys[pygame.K_DOWN]:
-                        self.dirny = 1
-                        self.dirnx = 0
-                        self.turns[self.head.pos[:]] = [self.dirnx,self.dirny]
-            
-            for i, c in enumerate(self.body):
-                p = c.pos[:]
-                if p in self.turns:
-                    turn = self.turns[p]
-                    c.move(turn[0], turn[1])
-                    if i == len(self.body)-1:
-                        self.turns.pop(p)
-                else:
-                    c.move(c.dirnx,c.dirny)
-            
-            
-        def reset(self,pos):
-            self.head = Game.Cube(pos)
-            self.body = []
-            self.body.append(self.head)
-            self.turns = {}
-            self.dirnx = 0
-            self.dirny = 1
-
-        def addCube(self):
-            tail = self.body[-1]
-            dx, dy = tail.dirnx, tail.dirny
-
-            if dx == 1 and dy == 0:
-                self.body.append(Game.Cube((tail.pos[0]-1,tail.pos[1])))
-            elif dx == -1 and dy == 0:
-                self.body.append(Game.Cube((tail.pos[0]+1,tail.pos[1])))
-            elif dx == 0 and dy == 1:
-                self.body.append(Game.Cube((tail.pos[0],tail.pos[1]-1)))
-            elif dx == 0 and dy == -1:
-                self.body.append(Game.Cube((tail.pos[0],tail.pos[1]+1)))
-
-            self.body[-1].dirnx = dx
-            self.body[-1].dirny = dy
-        
-        def draw(self, surface):
-            for i,c in enumerate(self.body):
-                if i == 0:
-                    c.draw(surface, True)
-                else:
-                    c.draw(surface)
-                    
-    def redrawWindow(self):
-        self.win.fill((0,0,0))
-        self.drawGrid(self.board_size, self.num_cube, self.win)
-        self.s.draw(self.win)
-        self.snack.draw(self.win)
-        pygame.display.update()
-        pass
+        # 5. update ui and clock
+        self._update_ui()
+        self.clock.tick(SPEED)
+        # 6. return game over and score
+        return reward, game_over, self.score
 
 
-    def drawGrid(self, w, rows, surface):
-        sizeBtwn = w // rows
+    def is_collision(self, pt=None):
+        if pt is None:
+            pt = self.head
+        # hits boundary
+        if pt.x > self.w - BLOCK_SIZE or pt.x < 0 or pt.y > self.h - BLOCK_SIZE or pt.y < 0:
+            return True
+        # hits itself
+        if pt in self.snake[1:]:
+            return True
 
-        x = 0
-        y = 0
-        for l in range(rows):
-            x = x + sizeBtwn
-            y = y +sizeBtwn
+        return False
 
-            pygame.draw.line(surface, (255,255,255), (x, 0),(x,w))
-            pygame.draw.line(surface, (255,255,255), (0, y),(w,y))
-        
-    def randomSnack(self, rows, item):
-        positions = item.body
 
-        while True:
-            x = random.randrange(1,rows-1)
-            y = random.randrange(1,rows-1)
-            if len(list(filter(lambda z:z.pos == (x,y), positions))) > 0:
-                continue
-            else:
-                break
+    def _update_ui(self):
+        self.display.fill(BLACK)
 
-        return (x,y)
-    
-game = Game()
+        for pt in self.snake:
+            pygame.draw.rect(self.display, BLUE1, pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE))
+            pygame.draw.rect(self.display, BLUE2, pygame.Rect(pt.x+4, pt.y+4, 12, 12))
+
+        pygame.draw.rect(self.display, RED, pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE, BLOCK_SIZE))
+
+        text = font.render("Score: " + str(self.score), True, WHITE)
+        self.display.blit(text, [0, 0])
+        pygame.display.flip()
+
+
+    def _move(self, action):
+        # [straight, right, left]
+
+        clock_wise = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP]
+        idx = clock_wise.index(self.direction)
+
+        if np.array_equal(action, [1, 0, 0]):
+            new_dir = clock_wise[idx] # no change
+        elif np.array_equal(action, [0, 1, 0]):
+            next_idx = (idx + 1) % 4
+            new_dir = clock_wise[next_idx] # right turn r -> d -> l -> u
+        else: # [0, 0, 1]
+            next_idx = (idx - 1) % 4
+            new_dir = clock_wise[next_idx] # left turn r -> u -> l -> d
+
+        self.direction = new_dir
+
+        x = self.head.x
+        y = self.head.y
+        if self.direction == Direction.RIGHT:
+            x += BLOCK_SIZE
+        elif self.direction == Direction.LEFT:
+            x -= BLOCK_SIZE
+        elif self.direction == Direction.DOWN:
+            y += BLOCK_SIZE
+        elif self.direction == Direction.UP:
+            y -= BLOCK_SIZE
+
+        self.head = Point(x, y)
